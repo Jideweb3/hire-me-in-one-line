@@ -35,7 +35,20 @@ def validate(text: str) -> None:
     # Exactly one sentence: one terminal full stop, at the end, no others.
     if text.count(".") != 1 or not text.endswith("."):
         raise ValueError("entry must be exactly one sentence")
-    text.encode("utf-8")  # raises if not valid UTF-8
+
+
+def validate_bytes(data: bytes) -> str:
+    """Strictly decode bytes as UTF-8, then run the text gate on them.
+
+    (Calling .encode() on a str can never fail, so the byte-level check is
+    the one that actually proves the file on disk is valid UTF-8.)
+    """
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"entry is not valid UTF-8: {exc}") from exc
+    validate(text)
+    return text
 
 
 def main() -> int:
@@ -56,9 +69,8 @@ def main() -> int:
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(ENTRY)
-        with open(tmp_path, "r", encoding="utf-8") as fh:
-            written = fh.read()
-        validate(written)
+        with open(tmp_path, "rb") as fh:
+            written = validate_bytes(fh.read())
         if written != ENTRY:
             raise ValueError("written text does not match the entry")
         os.replace(tmp_path, target)
@@ -70,9 +82,8 @@ def main() -> int:
         raise
 
     # Verify the final file on disk, as the grader will read it.
-    with open(target, "r", encoding="utf-8") as fh:
-        final = fh.read()
-    validate(final)
+    with open(target, "rb") as fh:
+        final = validate_bytes(fh.read())
     if final != ENTRY:
         print("error: final entry.txt does not match the entry", file=sys.stderr)
         return 1
